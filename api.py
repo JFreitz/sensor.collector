@@ -15,9 +15,14 @@ DB_URL = os.getenv("DATABASE_URL", "sqlite:///sensors.db")  # Cloud URL in produ
 engine = create_engine(DB_URL, echo=False)
 Session = sessionmaker(bind=engine)
 
-@app.route("/")
-def home():
-    return {"message": "Sensor API is running", "endpoints": ["/api/readings", "/api/latest"]}
+@app.route("/api/db_status")
+def db_status():
+    try:
+        with Session() as session:
+            result = session.execute(text("SELECT COUNT(*) FROM sensor_readings")).scalar()
+        return {"db_connected": True, "record_count": result}
+    except Exception as e:
+        return {"db_connected": False, "error": str(e)}
 
 @app.route("/api/readings")
 def get_readings():
