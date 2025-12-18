@@ -78,5 +78,7 @@ def sync_to_cloud():
 
     print(f"Synced {len(new_readings)} readings to cloud.")
 
+import time
+
 if __name__ == "__main__":
     sync_to_cloud()

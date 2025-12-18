@@ -29,11 +29,13 @@ def main():
     init_db()
     session = get_session()
     logger.info("Starting collector, interval=%s seconds", SAMPLE_INTERVAL)
+    from sync import sync_to_cloud
     try:
         while True:
             try:
                 collect_once(session)
                 logger.info("Collected and saved readings")
+                sync_to_cloud()
             except Exception as e:
                 logger.exception("Error during collection: %s", e)
             time.sleep(SAMPLE_INTERVAL)
