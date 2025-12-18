@@ -80,5 +80,12 @@ def sync_to_cloud():
 
 import time
 
+import time
+
 if __name__ == "__main__":
-    sync_to_cloud()
+    try:
+        while True:
+            sync_to_cloud()
+            time.sleep(1)  # 1 second interval for near real-time sync
+    except KeyboardInterrupt:
+        print("\nAuto-sync stopped by user.")
