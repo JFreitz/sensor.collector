@@ -1,0 +1,13 @@
+[Unit]
+Description=Sensor Collector Service (example)
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/Despro
+Environment=DATABASE_URL=sqlite:///sensors.db
+ExecStart=/home/pi/sensor-venv/bin/python /home/pi/Despro/collector.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
