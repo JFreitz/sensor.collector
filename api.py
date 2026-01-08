@@ -9,6 +9,7 @@ This module avoids Postgres-specific SQL so it can run on both.
 
 import os
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -29,6 +30,9 @@ Session = sessionmaker(bind=engine)
 
 # Ensure schema exists (safe on Postgres too).
 Base.metadata.create_all(bind=engine)
+
+
+DISPLAY_TZ = ZoneInfo(os.getenv("DISPLAY_TIMEZONE", "Asia/Manila"))
 
 
 def _utcnow() -> datetime:
@@ -52,6 +56,30 @@ def _parse_ts(value):
         except Exception:
             return _utcnow()
     return _utcnow()
+
+
+def _format_ts_for_display(ts) -> str:
+    """Return an ISO timestamp string in DISPLAY_TZ.
+
+    DB drivers may return datetime or string for timestamps; be tolerant.
+    """
+    if ts is None:
+        return ""
+    if isinstance(ts, datetime):
+        dt = ts
+    else:
+        s = str(ts).strip()
+        # Handle common DB string forms like "YYYY-mm-dd HH:MM:SS[.ffffff][+00:00]"
+        try:
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            dt = datetime.fromisoformat(s.replace(" ", "T"))
+        except Exception:
+            return str(ts)
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(DISPLAY_TZ).isoformat()
 
 
 def _check_ingest_auth() -> bool:
@@ -201,7 +229,7 @@ def get_readings():
             {"cutoff": cutoff},
         ).fetchall()
     
-    data = [{"sensor": r[0], "value": r[1], "unit": r[2], "timestamp": str(r[3])} for r in result]
+    data = [{"sensor": r[0], "value": r[1], "unit": r[2], "timestamp": _format_ts_for_display(r[3])} for r in result]
     return jsonify(data)
 
 @app.route("/api/latest")
@@ -224,7 +252,7 @@ def get_latest():
         sensor = r[0]
         if sensor in data:
             continue
-        data[sensor] = {"value": r[1], "unit": r[2], "timestamp": str(r[3])}
+        data[sensor] = {"value": r[1], "unit": r[2], "timestamp": _format_ts_for_display(r[3])}
     return jsonify(data)
 
 if __name__ == "__main__":
