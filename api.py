@@ -161,9 +161,9 @@ def ingest():
     if not isinstance(readings, dict):
         return {"ok": False, "error": "invalid readings"}, 400
 
-    allowed = os.getenv("ALLOWED_SENSORS", "temperature_c,humidity")
+    allowed = os.getenv("ALLOWED_SENSORS", "temperature_c,humidity,tds_ppm")
     allowed_sensors = {s.strip() for s in allowed.split(",") if s.strip()}
-    units = {"temperature_c": "C", "humidity": "%"}
+    units = {"temperature_c": "C", "humidity": "%", "tds_ppm": "ppm"}
 
     to_insert = []
     for sensor, value in readings.items():
@@ -221,7 +221,7 @@ def get_readings():
                 """
                 SELECT sensor, value, unit, timestamp
                 FROM sensor_readings
-                WHERE sensor IN ('temperature_c', 'humidity')
+                WHERE sensor IN ('temperature_c', 'humidity', 'tds_ppm')
                   AND timestamp >= :cutoff
                 ORDER BY timestamp DESC
                 """
@@ -241,7 +241,7 @@ def get_latest():
                 """
                 SELECT sensor, value, unit, timestamp
                 FROM sensor_readings
-                WHERE sensor IN ('temperature_c', 'humidity')
+                WHERE sensor IN ('temperature_c', 'humidity', 'tds_ppm')
                 ORDER BY sensor ASC, timestamp DESC
                 """
             )

@@ -99,15 +99,23 @@ def readings_to_rows(payload: dict[str, Any]) -> list[SensorReading]:
         "device": device,
     }
 
-    # Default to only storing temperature/humidity.
-    # Override by setting ALLOWED_SENSORS="sensor1,sensor2" if you later add more.
-    allowed = os.getenv("ALLOWED_SENSORS", "temperature_c,humidity")
+    # Default sensors stored.
+    # Override by setting ALLOWED_SENSORS="sensor1,sensor2".
+    allowed = os.getenv("ALLOWED_SENSORS", "temperature_c,humidity,tds_ppm")
     allowed_sensors = {s.strip() for s in allowed.split(",") if s.strip()}
 
     units = {
         "temperature_c": "C",
         "humidity": "%",
+        "tds_ppm": "ppm",
     }
+
+    tds_voltage_v = None
+    try:
+        if isinstance(readings, dict) and "tds_voltage_v" in readings:
+            tds_voltage_v = float(readings.get("tds_voltage_v"))
+    except Exception:
+        tds_voltage_v = None
 
     rows: list[SensorReading] = []
     for sensor, value in readings.items():
@@ -119,13 +127,18 @@ def readings_to_rows(payload: dict[str, Any]) -> list[SensorReading]:
         except Exception:
             continue
 
+        meta = meta_base
+        if sensor_name == "tds_ppm" and tds_voltage_v is not None:
+            meta = dict(meta_base)
+            meta["tds_voltage_v"] = tds_voltage_v
+
         rows.append(
             SensorReading(
                 timestamp=ts,
                 sensor=sensor_name,
                 value=v,
                 unit=units.get(sensor_name),
-                meta=meta_base,
+                meta=meta,
             )
         )
 
