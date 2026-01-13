@@ -94,6 +94,19 @@ def readings_to_rows(payload: dict[str, Any]) -> list[SensorReading]:
     if not isinstance(readings, dict):
         return []
 
+    # If the ESP32 sends only raw voltages (e.g. ph_voltage_v) we can compute
+    # the calibrated value on the Pi using calibration.json.
+    computed_readings = dict(readings)
+    if "ph" not in computed_readings and "ph_voltage_v" in computed_readings:
+        try:
+            from calibration import calibrate_ph
+
+            v_ph = float(computed_readings.get("ph_voltage_v"))
+            computed_readings["ph"] = float(calibrate_ph(v_ph))
+        except Exception:
+            # Keep going; we can still store other sensors.
+            pass
+
     meta_base: dict[str, Any] = {
         "source": "esp32_usb",
         "device": device,
@@ -101,24 +114,32 @@ def readings_to_rows(payload: dict[str, Any]) -> list[SensorReading]:
 
     # Default sensors stored.
     # Override by setting ALLOWED_SENSORS="sensor1,sensor2".
-    allowed = os.getenv("ALLOWED_SENSORS", "temperature_c,humidity,tds_ppm")
+    allowed = os.getenv("ALLOWED_SENSORS", "temperature_c,humidity,tds_ppm,ph")
     allowed_sensors = {s.strip() for s in allowed.split(",") if s.strip()}
 
     units = {
         "temperature_c": "C",
         "humidity": "%",
         "tds_ppm": "ppm",
+        "ph": "pH",
     }
 
     tds_voltage_v = None
     try:
-        if isinstance(readings, dict) and "tds_voltage_v" in readings:
-            tds_voltage_v = float(readings.get("tds_voltage_v"))
+        if isinstance(computed_readings, dict) and "tds_voltage_v" in computed_readings:
+            tds_voltage_v = float(computed_readings.get("tds_voltage_v"))
     except Exception:
         tds_voltage_v = None
 
+    ph_voltage_v = None
+    try:
+        if isinstance(computed_readings, dict) and "ph_voltage_v" in computed_readings:
+            ph_voltage_v = float(computed_readings.get("ph_voltage_v"))
+    except Exception:
+        ph_voltage_v = None
+
     rows: list[SensorReading] = []
-    for sensor, value in readings.items():
+    for sensor, value in computed_readings.items():
         sensor_name = str(sensor)
         if allowed_sensors and sensor_name not in allowed_sensors:
             continue
@@ -131,6 +152,10 @@ def readings_to_rows(payload: dict[str, Any]) -> list[SensorReading]:
         if sensor_name == "tds_ppm" and tds_voltage_v is not None:
             meta = dict(meta_base)
             meta["tds_voltage_v"] = tds_voltage_v
+
+        if sensor_name == "ph" and ph_voltage_v is not None:
+            meta = dict(meta)
+            meta["ph_voltage_v"] = ph_voltage_v
 
         rows.append(
             SensorReading(

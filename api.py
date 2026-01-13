@@ -161,12 +161,29 @@ def ingest():
     if not isinstance(readings, dict):
         return {"ok": False, "error": "invalid readings"}, 400
 
-    allowed = os.getenv("ALLOWED_SENSORS", "temperature_c,humidity,tds_ppm")
+    computed_readings = dict(readings)
+    if "ph" not in computed_readings and "ph_voltage_v" in computed_readings:
+        try:
+            from calibration import calibrate_ph
+
+            v_ph = float(computed_readings.get("ph_voltage_v"))
+            computed_readings["ph"] = float(calibrate_ph(v_ph))
+        except Exception:
+            pass
+
+    allowed = os.getenv("ALLOWED_SENSORS", "temperature_c,humidity,tds_ppm,ph")
     allowed_sensors = {s.strip() for s in allowed.split(",") if s.strip()}
-    units = {"temperature_c": "C", "humidity": "%", "tds_ppm": "ppm"}
+    units = {"temperature_c": "C", "humidity": "%", "tds_ppm": "ppm", "ph": "pH"}
 
     to_insert = []
-    for sensor, value in readings.items():
+    ph_voltage_v = None
+    try:
+        if "ph_voltage_v" in computed_readings:
+            ph_voltage_v = float(computed_readings.get("ph_voltage_v"))
+    except Exception:
+        ph_voltage_v = None
+
+    for sensor, value in computed_readings.items():
         sensor_name = str(sensor)
         if allowed_sensors and sensor_name not in allowed_sensors:
             continue
@@ -174,13 +191,18 @@ def ingest():
             v = float(value)
         except Exception:
             continue
+
+        meta = {"source": "http_ingest", "device": device}
+        if sensor_name == "ph" and ph_voltage_v is not None:
+            meta = dict(meta)
+            meta["ph_voltage_v"] = ph_voltage_v
         to_insert.append(
             SensorReading(
                 timestamp=ts,
                 sensor=sensor_name,
                 value=v,
                 unit=units.get(sensor_name),
-                meta={"source": "http_ingest", "device": device},
+                meta=meta,
             )
         )
 
@@ -221,7 +243,7 @@ def get_readings():
                 """
                 SELECT sensor, value, unit, timestamp
                 FROM sensor_readings
-                WHERE sensor IN ('temperature_c', 'humidity', 'tds_ppm')
+                                WHERE sensor IN ('temperature_c', 'humidity', 'tds_ppm', 'ph')
                   AND timestamp >= :cutoff
                 ORDER BY timestamp DESC
                 """
@@ -241,7 +263,7 @@ def get_latest():
                 """
                 SELECT sensor, value, unit, timestamp
                 FROM sensor_readings
-                WHERE sensor IN ('temperature_c', 'humidity', 'tds_ppm')
+                WHERE sensor IN ('temperature_c', 'humidity', 'tds_ppm', 'ph')
                 ORDER BY sensor ASC, timestamp DESC
                 """
             )
