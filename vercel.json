@@ -1,0 +1,13 @@
+{
+  "buildCommand": "echo 'Static site - no build needed'",
+  "outputDirectory": "dashboard",
+  "env": {
+    "VERCEL_ENV": "production"
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}
