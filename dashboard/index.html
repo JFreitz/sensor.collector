@@ -15,7 +15,14 @@
 </head>
 <body>
   <h1>Live Sensor Dashboard</h1>
-  <button onclick="fetchData()">Refresh</button>
+  <button onclick="fetchData()">Refresh Sensors</button>
+  
+  <!-- Relay Control Section -->
+  <h2>Relay Control</h2>
+  <div id="relay-controls" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 20px;"></div>
+  
+  <!-- Sensor Data Section -->
+  <h2>Sensor Readings</h2>
   <table id="sensor-table">
     <thead>
       <tr>
@@ -28,25 +35,109 @@
     <tbody></tbody>
   </table>
   <script>
-    const API_URL = 'https://sensorcollector-production.up.railway.app/api/latest';
+    // Use Railway URL or localhost for dev
+    // Use Railway URL or localhost for dev
+    const API_URL = window.location.hostname === 'localhost' 
+      ? 'http://localhost:5000'
+      : 'https://sensorcollector-production.up.railway.app';
+
+    const RELAY_LABELS = {
+      1: "Misting Pump",
+      2: "Air Pump",
+      3: "Exhaust Fan (In)",
+      4: "Exhaust Fan (Out)",
+      5: "Grow Lights (Aeroponics)",
+      6: "Grow Lights (DWC)",
+      7: "pH Up",
+      8: "pH Down"
+    };
+
     async function fetchData() {
-      const res = await fetch(API_URL, { cache: 'no-store' });
-      const data = await res.json();
-      const tbody = document.querySelector('#sensor-table tbody');
-      tbody.innerHTML = '';
-      Object.entries(data).forEach(([sensor, info]) => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td>${sensor}</td>
-          <td>${info.value}</td>
-          <td>${info.unit}</td>
-          <td class="timestamp">${info.timestamp}</td>
-        `;
-        tbody.appendChild(row);
-      });
+      try {
+        const res = await fetch(API_URL + '/api/latest', { cache: 'no-store' });
+        const data = await res.json();
+        const tbody = document.querySelector('#sensor-table tbody');
+        tbody.innerHTML = '';
+        Object.entries(data).forEach(([sensor, info]) => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${sensor}</td>
+            <td>${typeof info.value === 'number' ? info.value.toFixed(2) : info.value}</td>
+            <td>${info.unit}</td>
+            <td class="timestamp">${info.timestamp}</td>
+          `;
+          tbody.appendChild(row);
+        });
+      } catch (err) {
+        console.error('Failed to fetch sensors:', err);
+      }
     }
+
+    async function fetchRelayStatus() {
+      try {
+        const res = await fetch(API_URL + '/api/relay/status', { cache: 'no-store' });
+        const data = await res.json();
+        const container = document.getElementById('relay-controls');
+        container.innerHTML = '';
+        
+        data.relays.forEach(relay => {
+          const div = document.createElement('div');
+          div.style.cssText = 'border: 1px solid #ccc; padding: 10px; border-radius: 5px; text-align: center;';
+          
+          const label = document.createElement('div');
+          label.textContent = `${RELAY_LABELS[relay.id] || 'Relay ' + relay.id}`;
+          label.style.cssText = 'font-weight: bold; margin-bottom: 8px; font-size: 14px;';
+          
+          const state = document.createElement('div');
+          state.textContent = relay.state ? '🟢 ON' : '🔴 OFF';
+          state.style.cssText = 'margin-bottom: 8px; font-size: 16px; font-weight: bold;';
+          
+          const toggleBtn = document.createElement('button');
+          toggleBtn.textContent = relay.state ? 'Turn OFF' : 'Turn ON';
+          toggleBtn.style.cssText = 'width: 100%; padding: 8px; cursor: pointer; border-radius: 4px; border: none; background: ' + (relay.state ? '#ff6b6b' : '#51cf66') + '; color: white; font-weight: bold;';
+          
+          toggleBtn.onclick = async () => {
+            toggleBtn.disabled = true;
+            toggleBtn.textContent = 'Loading...';
+            
+            const url = relay.state 
+              ? API_URL + '/api/relay/' + relay.id + '/off'
+              : API_URL + '/api/relay/' + relay.id + '/on';
+            
+            try {
+              const resp = await fetch(url, { method: 'POST' });
+              if (resp.ok) {
+                await new Promise(r => setTimeout(r, 100)); // Wait 100ms for ESP32 to execute
+                fetchRelayStatus(); // Refresh status
+              } else {
+                toggleBtn.textContent = relay.state ? 'Turn OFF' : 'Turn ON';
+                toggleBtn.disabled = false;
+                alert('Failed to toggle relay');
+              }
+            } catch (err) {
+              console.error('Error:', err);
+              toggleBtn.textContent = relay.state ? 'Turn OFF' : 'Turn ON';
+              toggleBtn.disabled = false;
+            }
+          };
+          
+          div.appendChild(label);
+          div.appendChild(state);
+          div.appendChild(toggleBtn);
+          container.appendChild(div);
+        });
+      } catch (err) {
+        console.error('Failed to fetch relays:', err);
+      }
+    }
+
+    // Initial load
     fetchData();
+    fetchRelayStatus();
+    
+    // Auto-refresh every 5 seconds
     setInterval(fetchData, 5000);
+    setInterval(fetchRelayStatus, 2000);
   </script>
 </body>
 </html>
