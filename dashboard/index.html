@@ -509,7 +509,7 @@
         </div>
         
         <div class="timestamp">
-            Dashboard auto-refreshes every 5 seconds
+            Dashboard auto-refreshes every 5 seconds | Deployment: <span id="deployTime">loading...</span>
         </div>
     </div>
     
@@ -690,6 +690,9 @@
                 if (cb) cb.disabled = !enabled;
             }
         }
+        
+        // Show deployment time (verifies Vercel updated)
+        document.getElementById('deployTime').textContent = new Date().toLocaleString();
         
         // Initialize
         fetchSensorData();
