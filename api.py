@@ -328,6 +328,121 @@ def get_latest():
     return jsonify(data)
 
 
+@app.route("/api/history")
+def get_history():
+    """Get sensor reading history for the History tab.
+    
+    Query params:
+    - interval: 'daily' or '15min' (default: 'daily')
+    - days: number of days to look back (default: 7)
+    - limit: max records to return (default: 100)
+    """
+    interval = request.args.get('interval', 'daily').lower()
+    days = int(request.args.get('days', 7))
+    limit = int(request.args.get('limit', 100))
+    
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    
+    with Session() as session:
+        if interval == '15min':
+            # Get all readings in the time range, ordered by timestamp
+            rows = session.execute(
+                text(
+                    """
+                    SELECT timestamp, sensor, value, unit
+                    FROM sensor_readings
+                    WHERE sensor IN ('temperature_c', 'humidity', 'tds_ppm', 'ph', 'do_mg_l')
+                      AND timestamp >= :cutoff
+                    ORDER BY timestamp DESC
+                    LIMIT :limit
+                    """
+                ),
+                {"cutoff": cutoff, "limit": limit * 5},  # 5 sensors per reading
+            ).fetchall()
+        else:
+            # Daily aggregation - get average per day per sensor
+            # Using SQLite-compatible date extraction
+            rows = session.execute(
+                text(
+                    """
+                    SELECT DATE(timestamp) as day, sensor, AVG(value) as avg_value, unit
+                    FROM sensor_readings
+                    WHERE sensor IN ('temperature_c', 'humidity', 'tds_ppm', 'ph', 'do_mg_l')
+                      AND timestamp >= :cutoff
+                    GROUP BY DATE(timestamp), sensor, unit
+                    ORDER BY day DESC
+                    LIMIT :limit
+                    """
+                ),
+                {"cutoff": cutoff, "limit": limit * 5},
+            ).fetchall()
+    
+    # Group readings by timestamp
+    if interval == '15min':
+        # Group individual readings by timestamp
+        readings_by_ts = {}
+        for r in rows:
+            ts = r[0]
+            ts_key = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+            if ts_key not in readings_by_ts:
+                readings_by_ts[ts_key] = {
+                    'timestamp': _format_ts_for_display(ts),
+                    'ph': None,
+                    'do': None,
+                    'tds': None,
+                    'temp': None,
+                    'humidity': None
+                }
+            sensor = r[1]
+            value = r[2]
+            if sensor == 'ph':
+                readings_by_ts[ts_key]['ph'] = round(value, 2) if value else None
+            elif sensor == 'do_mg_l':
+                readings_by_ts[ts_key]['do'] = round(value, 2) if value else None
+            elif sensor == 'tds_ppm':
+                readings_by_ts[ts_key]['tds'] = round(value, 1) if value else None
+            elif sensor == 'temperature_c':
+                readings_by_ts[ts_key]['temp'] = round(value, 1) if value else None
+            elif sensor == 'humidity':
+                readings_by_ts[ts_key]['humidity'] = round(value, 1) if value else None
+        
+        data = list(readings_by_ts.values())[:limit]
+    else:
+        # Daily averages
+        readings_by_day = {}
+        for r in rows:
+            day = str(r[0])
+            if day not in readings_by_day:
+                readings_by_day[day] = {
+                    'timestamp': day,
+                    'ph': None,
+                    'do': None,
+                    'tds': None,
+                    'temp': None,
+                    'humidity': None
+                }
+            sensor = r[1]
+            value = r[2]
+            if sensor == 'ph':
+                readings_by_day[day]['ph'] = round(value, 2) if value else None
+            elif sensor == 'do_mg_l':
+                readings_by_day[day]['do'] = round(value, 2) if value else None
+            elif sensor == 'tds_ppm':
+                readings_by_day[day]['tds'] = round(value, 1) if value else None
+            elif sensor == 'temperature_c':
+                readings_by_day[day]['temp'] = round(value, 1) if value else None
+            elif sensor == 'humidity':
+                readings_by_day[day]['humidity'] = round(value, 1) if value else None
+        
+        data = list(readings_by_day.values())[:limit]
+    
+    return jsonify({
+        'success': True,
+        'interval': interval,
+        'count': len(data),
+        'readings': data
+    })
+
 # ==================== RELAY CONTROL ====================
 # In-memory relay states (persisted in DB for reliability)
 RELAY_STATES = {i: False for i in range(1, 10)}  # 9 relays
