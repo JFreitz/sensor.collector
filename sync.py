@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Sync local SQLite data to cloud PostgreSQL (Railway).
+"""Sync local SQLite data to Cloudflare via HTTP ingest.
 
-Copies new rows from local `Despro/sensors.db` to the database pointed to by
-`CLOUD_DATABASE_URL`.
+Copies new rows from local `Despro/sensors.db` to the API endpoint via HTTP.
+The API URL is read from logs/tunnel_url.txt (Cloudflare tunnel).
 """
 
 import os

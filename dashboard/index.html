@@ -35,11 +35,27 @@
     <tbody></tbody>
   </table>
   <script>
-    // Use Railway URL or localhost for dev
-    // Deploy: 2026-01-21 - Relay response time test
-    const API_URL = window.location.hostname === 'localhost' 
-      ? 'http://localhost:5000'
-      : 'https://sensorcollector-production.up.railway.app';
+    // Use Cloudflare tunnel URL or localhost for dev
+    let API_URL = 'http://localhost:5000'; // Default fallback
+
+    // Fetch the current tunnel URL on page load
+    async function initAPI() {
+      try {
+        // Try to get tunnel URL from server endpoint
+        const res = await fetch('/api/tunnel-url', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          API_URL = data.url || API_URL;
+        }
+      } catch (e) {
+        console.log('Tunnel URL not available, using fallback');
+      }
+      // Start fetching data
+      fetchData();
+      fetchRelayStatus();
+      setInterval(fetchData, 5000);
+      setInterval(fetchRelayStatus, 2000);
+    }
 
     const RELAY_LABELS = {
       1: "Misting Pump",
@@ -132,12 +148,7 @@
     }
 
     // Initial load
-    fetchData();
-    fetchRelayStatus();
-    
-    // Auto-refresh every 5 seconds
-    setInterval(fetchData, 5000);
-    setInterval(fetchRelayStatus, 2000);
+    initAPI();
   </script>
 </body>
 </html>

@@ -32,34 +32,32 @@ Files:
 - `calibration.py` — calibration data and functions
 - `db.py` — SQLAlchemy model and DB init
 - `collector.py` — main loop to persist readings
-- `sync.py` — sync local data to cloud DB
+- `sync.py` — sync local data to Cloudflare via HTTP ingest
 - `export_ml.py` — export data to CSV for ML
 - `.env.example` — env var examples
 
-Next steps: calibrate probes, sync to Railway, host API on Railway for Vercel dashboard, use cloud data for ML.
+Next steps: calibrate probes, sync via Cloudflare tunnel, access dashboard from Vercel, use cloud data for ML.
 
-## Cloud Setup (Railway + Vercel)
+## Cloud Setup (Cloudflare + Vercel)
 
-1. **Railway DB:**
-   - Sign up at railway.app, create project, add Postgres.
-   - Get DATABASE_URL from Railway dashboard.
+1. **Cloudflare Tunnel:**
+   - Run: `bash start_tunnel.sh` (starts API + Cloudflare Quick Tunnel)
+   - Tunnel URL saved to `logs/tunnel_url.txt` (changes on each run)
+   - Public URL accessible from anywhere
 
 2. **Sync local to cloud:**
-   - Set `CLOUD_DATABASE_URL` in .env to Railway URL.
-   - Run: `python sync.py`
+   - Cloudflare tunnel URL is automatically read from `logs/tunnel_url.txt`
+   - Run: `python sync.py` to push local data via HTTP ingest
+   - Set `INGEST_TOKEN` env var for authentication (optional)
 
-3. **Deploy API on Railway:**
-   - Push `api.py` + `requirements.txt` to GitHub.
-   - Connect Railway to repo, set DATABASE_URL env var.
-   - API endpoints: `/api/readings` (all), `/api/latest` (per sensor).
-
-4. **Vercel Dashboard:**
-   - Create Next.js app, fetch from Railway API URL.
-   - Example: `fetch('https://your-railway-api.up.railway.app/api/latest')`
+3. **Dashboard:**
+   - Deploy dashboard from `dashboard/` folder to Vercel
+   - Dashboard auto-detects tunnel URL from `/api/tunnel-url` endpoint
+   - Fallback to localhost (http://localhost:5000) for local dev
 
 ## Sync to Cloud
 
-Set `CLOUD_DATABASE_URL` to your Railway Postgres URL, then:
+The sync.py script automatically reads the Cloudflare tunnel URL:
 
 ```bash
 python sync.py
@@ -67,16 +65,9 @@ python sync.py
 
 Run periodically (e.g., cron) to push local data to cloud.
 
-### If your Railway DB host is internal-only
-
-If your Postgres URL host ends with `.railway.internal`, it is only reachable from inside Railway.
-
-In that case, deploy the API to Railway and sync via HTTP ingest instead:
-
-- On Railway (API service): set `DATABASE_URL` (internal is fine) and `INGEST_TOKEN`.
-- On the Pi: set `CLOUD_INGEST_URL` to `https://<your-app>.up.railway.app/api/ingest` and the same `INGEST_TOKEN`.
-
-`sync.py` will automatically use HTTP ingest when `CLOUD_INGEST_URL` is set (or when `CLOUD_DATABASE_URL` is Railway-internal).
+**Environment variables:**
+- `CLOUD_INGEST_URL`: Optional, if not set, tunnel URL is read from logs/tunnel_url.txt
+- `INGEST_TOKEN`: Optional token for API authentication
 
 ## Export for ML
 
